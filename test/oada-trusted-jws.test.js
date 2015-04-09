@@ -30,7 +30,7 @@ Promise.longStackTraces();
 chai.config.includeStack = true;
 chaiAsPromised.transferPromiseness = function(assertion, promise) {
     var p = promise.error(function(e) {
-        throw e.cause;
+        return Promise.reject(e.cause);
     });
     assertion.then = promise.then.bind(p);
 };
