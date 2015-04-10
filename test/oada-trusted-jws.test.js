@@ -22,7 +22,7 @@ var Promise = require('bluebird');
 var expect = chai.expect;
 var nock = require('nock');
 var url = require('url');
-var jws = require('jws');
+var jwt = require('jsonwebtoken');
 var jwk2pem = require('pem-jwk').jwk2pem;
 
 // Good enough?
@@ -64,18 +64,18 @@ describe('oada-trusted-jws', function() {
     });
 
     it('should error for invalid signature', function() {
-        sig = jws.sign({
-            header: {
-                kid: privJwk.kid,
-                jku: TEST_ROOT,
-                alg: 'HS256'
-            },
-            payload: payload,
-            secret: 'FOO'
-        });
+        sig = jwt.sign(
+            payload,
+            'FOO',
+            {
+                algorithm: 'HS256',
+                header: {
+                    kid: privJwk.kid,
+                    jku: TEST_ROOT
+                }
+            });
 
-        return expect(check(sig))
-            .to.eventually.be.rejectedWith('Invalid signature');
+        return expect(check(sig)).to.eventually.be.rejected;
     });
 
     ['trusted', 'untrusted'].forEach(function(trust) {
@@ -83,15 +83,16 @@ describe('oada-trusted-jws', function() {
             var trusted = trust === 'trusted';
 
             before(function genSig() {
-                sig = jws.sign({
-                    header: {
-                        kid: privJwk.kid,
-                        jku: TEST_ROOT + trust,
-                        alg: 'RS256'
-                    },
-                    payload: payload,
-                    secret: jwk2pem(privJwk)
-                });
+                sig = jwt.sign(
+                    payload,
+                    jwk2pem(privJwk),
+                    {
+                        algorithm: 'RS256',
+                        header: {
+                            kid: privJwk.kid,
+                            jku: TEST_ROOT + trust
+                        },
+                    });
             });
 
             it('should return trusted ' + trusted, function() {

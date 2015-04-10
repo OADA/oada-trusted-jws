@@ -19,6 +19,7 @@ var Promise = require('bluebird');
 var request = Promise.promisifyAll(require('superagent'));
 var jwku = Promise.promisifyAll(require('jwks-utils'));
 var jws = require('jws');
+var jwt = require('jsonwebtoken');
 var jwk2pem = require('pem-jwk').jwk2pem;
 
 var TRUSTED_LIST_URI = 'http://oada.github.io/oada-trusted-lists/' +
@@ -51,12 +52,8 @@ module.exports = function(sig, options, callback) {
         return jwku.jwkForSignatureAsync(sig, trusted && jku, options);
     });
 
-    return Promise.join(decoded, trusted, jwk, function(decoded, trusted, jwk) {
-        if (jws.verify(sig, 'RS256', jwk2pem(jwk))) {
-            return [trusted, decoded.payload];
-        } else {
-            throw new Error('Invalid signature');
-        }
+    return Promise.join(trusted, jwk, function(trusted, jwk) {
+        return [trusted, jwt.verify(sig, jwk2pem(jwk))];
     }).nodeify(callback, {spread: true});
 };
 

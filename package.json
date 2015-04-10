@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "bluebird": "^2.9.24",
+    "jsonwebtoken": "^5.0.0",
     "jwks-utils": "^1.0.0",
     "jws": "^3.0.0",
     "pem-jwk": "^1.5.1",
