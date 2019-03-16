@@ -15,100 +15,118 @@
 
 'use strict';
 
-var chai = require('chai');
-var chaiAsPromised = require('chai-as-promised');
+const chai = require('chai');
+const chaiAsPromised = require('chai-as-promised');
 chai.use(chaiAsPromised);
-var Promise = require('bluebird');
-var expect = chai.expect;
-var nock = require('nock');
-var url = require('url');
-var jwt = require('jsonwebtoken');
-var jwk2pem = require('pem-jwk').jwk2pem;
+const Promise = require('bluebird');
+const expect = chai.expect;
+const nock = require('nock');
+const url = require('url');
+const jwt = require('jsonwebtoken');
+const jwk2pem = require('pem-jwk').jwk2pem;
 
-// Good enough?
-Promise.longStackTraces();
-chai.config.includeStack = true;
-chaiAsPromised.transferPromiseness = function(assertion, promise) {
-    var p = promise.error(function(e) {
-        return Promise.reject(e.cause);
-    });
-    assertion.then = promise.then.bind(p);
+// The module to be "checked" (i.e. under test)
+const check = require('../');
+
+// We will mock a server for the tests that use this URL:
+const TEST_ROOT = 'https://test.example.org/';
+
+// keypair used for signing in the tests:
+const privJwk = require('./private.jwk.json');
+// A  public key is same as private key, but only keeping kid, n, e, and kty
+const pubJwk = {
+  kid: privJwk.kid,
+    n: privJwk.n,
+    e: privJwk.e,
+  kty: privJwk.kty,
 };
 
-var check = require('../');
-
-var TEST_ROOT = 'https://test.example.org/';
-
-var privJwk = require('./private.jwk.json');
-var pubJwk = {};
-['kid', 'n', 'e', 'kty'].forEach(function(pubKey) {
-    pubJwk[pubKey] = privJwk[pubKey];
-});
 
 describe('oada-trusted-jws', function() {
-    var sig;
-    var payload = 'DEAD BEEF';
+  const payload = 'DEAD BEEF';
 
-    beforeEach(function mockList() {
-        var uri = url.parse(check.TRUSTED_LIST_URI);
-        nock(url.format({protocol: uri.protocol, host:uri.host}))
-            .get(uri.path)
-            .reply(200, [TEST_ROOT + 'trusted']);
+  // Setup the mock server to serve a trusted list with a URL for it's own jwk set 
+  beforeEach(function mockList() {
+    const uri = url.parse(check.TRUSTED_LIST_URI);
+    nock(url.format({protocol: uri.protocol, host:uri.host}))
+    .get(uri.path)
+    .reply(200, [TEST_ROOT + 'trusted']);
+  });
+
+  // Setup the mock server to serve it's jwk set at the URL given in the mocked list above
+  beforeEach(function mockJWKS() {
+    nock(TEST_ROOT)
+    .filteringPath(function() { return '/'; })
+    .get('/')
+    .reply(200, {keys: [pubJwk]});
+  });
+
+  it('should work with callback', function(done) {
+    check({}, () => done());
+  });
+
+  it('should error for invalid signature', function() {
+    // create a signature with private key = "FOO"
+    const sig = jwt.sign(payload, 'FOO', {
+      algorithm: 'HS256',
+      header: {
+        kid: privJwk.kid,
+        jku: TEST_ROOT
+      }
+    });
+    return expect(check(sig)).to.eventually.be.rejected;
+  });
+
+
+  //--------------------------------------------------------------------
+  describe('for valid but untrusted signature', function() {
+    it('should return false for "trusted" return value', () => {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT + 'untrusted',
+        },
+      });
+      return expect(check(sig).get(0)).to.eventually.equal(false);
     });
 
-    beforeEach(function mockJKU() {
-        nock(TEST_ROOT)
-            .filteringPath(function() { return '/'; })
-            .get('/')
-            .reply(200, {keys: [pubJwk]});
+    it('should return the signature payload even though untrusted', () => {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT + 'untrusted',
+        },
+      });
+      return expect(check(sig).get(1)).to.eventually.deep.equal(payload);
+    });
+  });
+
+
+  //--------------------------------------------------------------------
+  describe('for valid trusted signature', function() {
+    it('should return true for "trusted" return value', () => {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT + 'trusted'
+        },
+      });
+      return expect(check(sig).get(0)).to.eventually.equal(true);
     });
 
-    it('should error for invalid signature', function() {
-        sig = jwt.sign(
-            payload,
-            'FOO',
-            {
-                algorithm: 'HS256',
-                header: {
-                    kid: privJwk.kid,
-                    jku: TEST_ROOT
-                }
-            });
-
-        return expect(check(sig)).to.eventually.be.rejected;
+    it('should return the signature payload', function() {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT + 'trusted'
+        },
+      });
+      return expect(check(sig).get(1)).to.eventually.deep.equal(payload);
     });
+  });
 
-    ['trusted', 'untrusted'].forEach(function(trust) {
-        describe('for ' + trust + ' signature', function() {
-            var trusted = trust === 'trusted';
-
-            before(function genSig() {
-                sig = jwt.sign(
-                    payload,
-                    jwk2pem(privJwk),
-                    {
-                        algorithm: 'RS256',
-                        header: {
-                            kid: privJwk.kid,
-                            jku: TEST_ROOT + trust
-                        },
-                    });
-            });
-
-            it('should return trusted ' + trusted, function() {
-                return expect(check(sig).get(0)).to.eventually.equal(trusted);
-            });
-
-            it('should return the signature payload', function() {
-                return expect(check(sig).get(1))
-                    .to.eventually.deep.equal(payload);
-            });
-        });
-    });
-
-    it('should work with callback', function(done) {
-        check({}, function() {
-            done();
-        });
-    });
 });
