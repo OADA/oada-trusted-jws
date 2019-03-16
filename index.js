@@ -55,7 +55,7 @@ module.exports = function(sig, options, callback) {
     //---------------------------------------------------------------------------
     // Loop over all the trusted list URI's, checking if we already have in cache
     // If in cache, also check that they are not stale and need to be replaced
-    const now = Date.now() / 60;
+    const now = Date.now() / 1000; // convert ms to sec
     return Promise.map(trustedListURIs, listURI => {
       if (  !trustedListCache[listURI] 
           || trustedListCache[listURI].timeLastFetched < (now - options.trustedListCacheTime)) { // either not cached, or cache is old
