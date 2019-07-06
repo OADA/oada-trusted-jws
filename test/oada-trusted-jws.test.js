@@ -24,6 +24,8 @@ const nock = require('nock');
 const url = require('url');
 const jwt = require('jsonwebtoken');
 const jwk2pem = require('pem-jwk').jwk2pem;
+const debug = require('debug');
+const log = debug('oada-trusted-jws:test:trace');
 
 // The module to be "checked" (i.e. under test)
 const check = require('../');
@@ -46,26 +48,34 @@ describe('oada-trusted-jws', function() {
   const payload = 'DEAD BEEF';
 
   // Setup the mock server to serve a trusted list with a URL for it's own jwk set 
+  // When the main function tries to get the Trusted List, this will respond instead of github:
   beforeEach(function mockList() {
     const uri = url.parse(check.TRUSTED_LIST_URI);
     nock(url.format({protocol: uri.protocol, host:uri.host}))
+    .log(log)
     .get(uri.path)
-    .reply(200, [TEST_ROOT + 'trusted']);
+    .reply(200, { version: "2", jkus: [ TEST_ROOT ], jwks: { keys: [] } });
+    // this is what version 1 trusted list looked like: .reply(200, [TEST_ROOT]);
   });
 
   // Setup the mock server to serve it's jwk set at the URL given in the mocked list above
   beforeEach(function mockJWKS() {
+
+    // Setup the correct "trusted" one that's in mocked trusted list above:
     nock(TEST_ROOT)
-    .filteringPath(function() { return '/'; })
+    .log(log)
+    //.filteringPath(function() { return '/'; })
+
+    // For the root, it's in the trusted list:
     .get('/')
-    .reply(200, {keys: [pubJwk]});
+    .reply(200, {keys: [pubJwk]})
+
+    // Also, host this one as the same list, but not considered trusted
+    .get('/untrusted')
+    .reply(200, { keys: [ pubJwk ] });
   });
 
-  it('should work with callback', function(done) {
-    check({}, () => done());
-  });
-
-  it('should error for invalid signature', function() {
+  it('should error (throw) for invalid signature', function() {
     // create a signature with private key = "FOO"
     const sig = jwt.sign(payload, 'FOO', {
       algorithm: 'HS256',
@@ -76,7 +86,6 @@ describe('oada-trusted-jws', function() {
     });
     return expect(check(sig)).to.eventually.be.rejected;
   });
-
 
   //--------------------------------------------------------------------
   describe('for valid but untrusted signature', function() {
@@ -103,7 +112,6 @@ describe('oada-trusted-jws', function() {
     });
   });
 
-
   //--------------------------------------------------------------------
   describe('for valid trusted signature', function() {
     it('should return true for "trusted" return value', () => {
@@ -111,7 +119,7 @@ describe('oada-trusted-jws', function() {
         algorithm: 'RS256',
         header: {
           kid: privJwk.kid,
-          jku: TEST_ROOT + 'trusted'
+          jku: TEST_ROOT,
         },
       });
       return expect(check(sig).get(0)).to.eventually.equal(true);
@@ -122,7 +130,7 @@ describe('oada-trusted-jws', function() {
         algorithm: 'RS256',
         header: {
           kid: privJwk.kid,
-          jku: TEST_ROOT + 'trusted'
+          jku: TEST_ROOT,
         },
       });
       return expect(check(sig).get(1)).to.eventually.deep.equal(payload);
