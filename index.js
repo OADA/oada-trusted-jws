@@ -34,7 +34,7 @@ var TRUSTED_LIST_URI = 'https://oada.github.io/oada-trusted-lists/client-registr
 //   additionalTrustedListURIs: [ 'https://somewhere.com/client-registration.json' ],
 // }
 
-const trustedListCache = {};
+let trustedListCache = {};
 const clearCache = function() {
   trustedListCache = {}; // Clear our cache of trusted lists
   jwku.clearJWKsCache(); // and clear the jwku library's cache of jwks sets
