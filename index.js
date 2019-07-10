@@ -35,6 +35,11 @@ var TRUSTED_LIST_URI = 'https://oada.github.io/oada-trusted-lists/client-registr
 // }
 
 const trustedListCache = {};
+const clearCache = function() {
+  trustedListCache = {}; // Clear our cache of trusted lists
+  jwku.clearJWKsCache(); // and clear the jwku library's cache of jwks sets
+}                        // mainly useful for testing...
+
 module.exports = function(sig, options, callback) {
   return Promise.try(() => {
     if (typeof options === 'function') {
@@ -51,12 +56,14 @@ module.exports = function(sig, options, callback) {
 
     // Build the list of all the trusted lists we're going to check
     let trustedListURIs = options.disableDefaultTrustedListURI ? [] : [ TRUSTED_LIST_URI ];
+    trace('additionalTrustedListURIs = ', options.additionalTrustedListURIs);
     trustedListURIs = trustedListURIs.concat(options.additionalTrustedListURIs);
     trace('Using trustedListURIs = ', trustedListURIs);
 
     //---------------------------------------------------------------------------
     // Loop over all the trusted list URI's, checking if we already have in cache
     // If in cache, also check that they are not stale and need to be replaced
+    trace('Starting trusted lists cache check, trustedListCache = ', trustedListCache);
     const now = Date.now() / 1000; // convert ms to sec
     return Promise.map(trustedListURIs, listURI => {
       if (  !trustedListCache[listURI] 
@@ -164,3 +171,4 @@ module.exports = function(sig, options, callback) {
 };
 
 module.exports.TRUSTED_LIST_URI = TRUSTED_LIST_URI;
+module.exports.clearCache = clearCache;

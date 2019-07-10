@@ -32,6 +32,7 @@ const check = require('../');
 
 // We will mock a server for the tests that use this URL:
 const TEST_ROOT = 'https://test.example.org/';
+const CUSTOM_TRUSTED_LIST = 'https://custom.trusted.list.com/';
 
 // keypair used for signing in the tests:
 const privJwk = require('./private.jwk.json');
@@ -54,6 +55,13 @@ describe('oada-trusted-jws', function() {
     nock(url.format({protocol: uri.protocol, host:uri.host}))
     .log(log)
     .get(uri.path)
+    .reply(200, { version: "2", jkus: [ TEST_ROOT ], jwks: { keys: [] } });
+
+    // Also host another identical one at a custom domain to test customizable trusted lists:
+    const custom_uri = url.parse(CUSTOM_TRUSTED_LIST);
+    nock(url.format({protocol: custom_uri.protocol, host: custom_uri.host}))
+    .log(log)
+    .get(custom_uri.path)
     .reply(200, { version: "2", jkus: [ TEST_ROOT ], jwks: { keys: [] } });
     // this is what version 1 trusted list looked like: .reply(200, [TEST_ROOT]);
   });
@@ -137,4 +145,49 @@ describe('oada-trusted-jws', function() {
     });
   });
 
+  describe('for customizing set of trusted lists', function() {
+    it('should work for signature validation and be untrusted if no trusted lists exist', function() {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT, // this would be considered trusted if trusted list was available
+        },
+      });
+      // Disable default trusted list, and don't supply any others:
+      return expect(check(sig, { disableDefaultTrustedListURI: true }).get(0)).to.eventually.equal(false);
+    });
+    it('should work for customized trusted list that is down, returning false for trusted', function() {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT, // this would be considered trusted if trusted list was available
+        },
+      });
+      // Disable trusted list, and add a bad (down) trusted list:
+      this.timeout(2000);
+      return expect(check(sig, { 
+        disableDefaultTrustedListURI: true,
+        additionalTrustedListURIs: [ 'https://fakelist.is.down.and.never.will.return' ],
+      }).get(0)).to.eventually.equal(false);
+    });
+    it('should work for customized trusted list', function() {
+      const sig = jwt.sign(payload, jwk2pem(privJwk), {
+        algorithm: 'RS256',
+        header: {
+          kid: privJwk.kid,
+          jku: TEST_ROOT, // the new custom trusted list has this listed as trusted JKU
+        },
+      });
+      // Disable default list, and use our custom one only:
+      return expect(check(sig, { 
+        disableDefaultTrustedListURI: true,
+        additionalTrustedListURIs: [ CUSTOM_TRUSTED_LIST ],
+      }).get(0)).to.eventually.equal(true);
+    });
+
+
+
+  });
 });
