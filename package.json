@@ -1,6 +1,6 @@
 {
   "name": "oada-trusted-jws",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Check if a JWS was signed by an OADA trusted party",
   "main": "index.js",
   "scripts": {
