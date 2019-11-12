@@ -164,8 +164,10 @@ module.exports = function(sig, options, callback) {
   }).then(({ decoded, trusted, jwk }) => {
     if (!decoded) return [ false, false ];
     return [ trusted, jwt.verify(sig, jwk2pem(jwk)) ];
-
-  // And signal the callback with any thrown errors, or (trusted, clientRegistration) if no errors
+  }).catch(err => {
+    info('jwku.jwkForSignatureAsync or jwt.verify threw an error, it was: ', err);
+    return [false, false];
+    // And signal the callback with any thrown errors, or (trusted, clientRegistration) if no errors
   }).nodeify(callback, { spread: true });
 
 };
