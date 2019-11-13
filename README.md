@@ -5,6 +5,8 @@
 
 # oada-trusted-jws #
 
+THIS LIBRARY IS DEPRECATED.  WE USE OADA-CERTS NOW INSTEAD.
+
 ## Installation ##
 ```shell
 npm install oada-trusted-jws
